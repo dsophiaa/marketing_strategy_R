@@ -1,0 +1,111 @@
+---
+title: "Маркетинговая стратегия"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+library(stringr)
+library(coin)
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+library(forcats)
+
+marketing = read.csv("~/shared/minor2_2022/1-Intro/hw2/marketing_campaign.csv")
+
+marketing$Education = as.factor(marketing$Education)
+marketing$AcceptedCmp = as.logical(marketing$AcceptedCmp)
+marketing$Complain = as.logical(marketing$Complain)
+marketing$Response = as.logical(marketing$Response)
+marketing$Marital_Status = as.factor(marketing$Marital_Status)
+
+t.test(NumWebPurchases ~ Response, marketing)
+
+rows_q1 = c(-7.2828, t.test(NumWebPurchases ~ Response, marketing)$p.value)
+columns_q1 = c("t-test", "p-value ")
+table_q1 = data.frame(Type = columns_q1, Value = rows_q1)
+knitr::kable(table_q1, align = "ll")
+
+ch = chisq.test(marketing$AcceptedCmp, marketing$Response)
+
+rows_q2 = c(162.741, ch$p.value)
+columns_q2 = c("X-squared", "p-value ")
+table_q2 = data.frame(Type = columns_q1, Value = rows_q1)
+knitr::kable(table_q2, align = "ll")
+
+set.seed(1234)
+marketing_train = marketing %>% sample_frac(.8)
+marketing_test = anti_join(marketing, marketing_train) %>% dplyr::select(-ID)
+marketing_train = marketing_train %>% dplyr::select(-ID)
+
+set.seed(1234)
+tree1 <- rpart(Response ~ Year_Birth + Education + Marital_Status + Income + NumDealsPurchases + NumWebPurchases + NumStorePurchases + AcceptedCmp + Complain, method = "class", data = marketing_train)
+#prp(tree1)
+
+pred = predict(tree1, type="class", data = marketing_train)
+t = table(pred, marketing_train$Response)
+t
+(t[1,1] + t[2,2])/sum(t)
+
+pred_test = predict(tree1, newdata = marketing_test, type="class")
+
+t2 = table(pred_test, marketing_test$Response)
+t2
+vb1 =round((t2[1,1] + t2[2,2])/sum(t2), 2)
+```
+
+Column {data-width=550}
+-----------------------------------------------------------------------
+
+### **Предсказание ответа на предложение компании с помощью дерева решений**
+
+```{r}
+rpart.plot(tree1)
+```
+
+### Точность получившейся модели, рассчитанная по тестовой выборке  
+```{r}
+valueBox(paste(vb1*100, "%"), icon = "fa-sitemap")
+
+
+```  
+
+ 
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+### **Статистические тесты**
+
+#### Влияние количества покупок в интернете на ответ клиента  
+```{r}
+knitr::kable(table_q1, align = "ll")
+```
+**Графическое представление разницы средних**
+```{r}
+ggplot(data = (marketing %>% filter(NumWebPurchases <= 22)), 
+       aes(x = NumWebPurchases, group = Response, fill = Response)) +
+  geom_density(alpha = 0.5) + scale_fill_manual(values = c("skyblue", "forestgreen")) +
+  geom_vline(xintercept = mean((marketing %>% filter(Response == TRUE))$NumWebPurchases), color = "darkgreen",
+             lty = 2) +
+  geom_vline(xintercept = mean((marketing %>% filter(Response == FALSE))$NumWebPurchases), color = "blue",
+             lty = 2) +
+  ggtitle("Распределение количества покупок в инетрнете среди\nпринявших и не принявших предложение компании") +
+  xlab("количество покупок в интернете") +
+  ylab("плотность распределния") + 
+  labs(fill = "Принял предложение\nкомпании (T-да, F-нет)")
+```
+
+#### Связь между откликом на предыдущее и нынешнее предложение 
+
+```{r}
+knitr::kable(table_q2, align = "ll")
+```
